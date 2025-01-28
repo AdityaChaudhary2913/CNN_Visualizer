@@ -3,5 +3,5 @@ tensorflow
 keras
 matplotlib
 numpy
-opencv-python
+opencv-python-headless
 Pillow
