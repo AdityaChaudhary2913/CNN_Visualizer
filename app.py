@@ -6,8 +6,8 @@ from tensorflow.keras.applications import VGG16, EfficientNetB0
 from tensorflow.keras.applications.vgg16 import preprocess_input as preprocess_vgg
 from tensorflow.keras.applications.efficientnet import preprocess_input as preprocess_eff
 from tensorflow.keras.applications.efficientnet import decode_predictions
-import cv2
 import matplotlib.pyplot as plt
+import cv2
 
 # Set up the app
 st.set_page_config(page_title="CNN Visualization App", layout="wide")
