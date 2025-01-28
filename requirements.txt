@@ -3,5 +3,5 @@ tensorflow
 keras
 matplotlib
 numpy
-opencv-python==4.10.0.84
+opencv-python-headless==4.7.0.72
 Pillow
