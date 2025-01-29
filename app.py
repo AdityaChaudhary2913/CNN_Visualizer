@@ -19,8 +19,8 @@ st.set_page_config(page_title="CNN Visualization App", layout="wide")
 st.title("CNN Visualization App 📊")
 
 # Sidebar for Model Selection
-st.sidebar.header("Configuration Settings")
-model_type = st.sidebar.selectbox("Choose Model", ["VGG16"])
+st.sidebar.header("Using Pretrained Model VGG16")
+model_type = "VGG16"
 
 # Load the pre-trained model
 @st.cache_resource
@@ -131,6 +131,54 @@ if uploaded_file:
             st.image(superimposed_img_rgb, caption="Enhanced Saliency Map Overlay", use_container_width=True)
         else:
             st.warning("Please predict the image class first.")
+            
+        # Forward Propagation Visualization
+    st.subheader("🔍 Forward Propagation Visualization")
+
+    # Create a model that outputs the activations of each layer
+    layer_outputs = [layer.output for layer in model.layers]
+    activation_model = tf.keras.Model(inputs=model.input, outputs=layer_outputs)
+
+    # Get activations for the input image
+    activations = activation_model.predict(img_array)
+
+    # Extract layer names for the selectbox
+    layer_names = [layer.name for layer in model.layers if "conv" in layer.name or "pool" in layer.name]
+
+    # Add a selectbox for layer selection
+    selected_layer = st.selectbox("Select Layer to Visualize 🎯", layer_names)
+
+    # Find the index of the selected layer
+    layer_index = [layer.name for layer in model.layers].index(selected_layer)
+    
+    from io import BytesIO
+    buf = BytesIO()
+    plt.savefig(buf, format="png")
+    st.download_button("Download Feature Maps", buf.getvalue(), file_name="feature_maps.png", mime="image/png")
+
+    # Visualize activations for the selected layer
+    st.subheader(f"Layer: {selected_layer}")
+    layer_activation = activations[layer_index]
+
+    # Display feature maps for the selected layer
+    num_filters = layer_activation.shape[-1]
+    grid_size = int(np.ceil(np.sqrt(num_filters)))
+    
+    selected_filter = st.slider("Select Filter", 1, num_filters, 1)
+    selected_filter_index = selected_filter - 1  
+    fig, ax = plt.subplots()
+    ax.imshow(layer_activation[0, :, :, selected_filter_index], cmap='viridis')
+    ax.set_title(f"Filter {selected_filter}")  # Keep one-based index for display
+    ax.axis('off')
+    st.pyplot(fig)
+
+    fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 10))
+    axes = axes.ravel()
+    for j in range(num_filters):
+        if j < len(axes):
+            axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
+            axes[j].axis('off')
+    st.pyplot(fig)
             
     # Custom Filter Creation
     st.subheader("🎨 Custom Filter Creation")
@@ -417,51 +465,3 @@ if uploaded_file:
                 axes[i].set_visible(False)
         
         st.pyplot(fig)
-        
-    # Forward Propagation Visualization
-    st.subheader("🔍 Forward Propagation Visualization")
-
-    # Create a model that outputs the activations of each layer
-    layer_outputs = [layer.output for layer in model.layers]
-    activation_model = tf.keras.Model(inputs=model.input, outputs=layer_outputs)
-
-    # Get activations for the input image
-    activations = activation_model.predict(img_array)
-
-    # Extract layer names for the selectbox
-    layer_names = [layer.name for layer in model.layers if "conv" in layer.name or "pool" in layer.name]
-
-    # Add a selectbox for layer selection
-    selected_layer = st.selectbox("Select Layer to Visualize 🎯", layer_names)
-
-    # Find the index of the selected layer
-    layer_index = [layer.name for layer in model.layers].index(selected_layer)
-    
-    from io import BytesIO
-    buf = BytesIO()
-    plt.savefig(buf, format="png")
-    st.download_button("Download Feature Maps", buf.getvalue(), file_name="feature_maps.png", mime="image/png")
-
-    # Visualize activations for the selected layer
-    st.subheader(f"Layer: {selected_layer}")
-    layer_activation = activations[layer_index]
-
-    # Display feature maps for the selected layer
-    num_filters = layer_activation.shape[-1]
-    grid_size = int(np.ceil(np.sqrt(num_filters)))
-    
-    selected_filter = st.slider("Select Filter", 1, num_filters, 1)
-    selected_filter_index = selected_filter - 1  
-    fig, ax = plt.subplots()
-    ax.imshow(layer_activation[0, :, :, selected_filter_index], cmap='viridis')
-    ax.set_title(f"Filter {selected_filter}")  # Keep one-based index for display
-    ax.axis('off')
-    st.pyplot(fig)
-
-    fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 10))
-    axes = axes.ravel()
-    for j in range(num_filters):
-        if j < len(axes):
-            axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
-            axes[j].axis('off')
-    st.pyplot(fig)
