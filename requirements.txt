@@ -5,3 +5,4 @@ matplotlib
 numpy
 opencv-python-headless
 Pillow
+scipy

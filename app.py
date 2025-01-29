@@ -6,6 +6,11 @@ from tensorflow.keras.applications import VGG16, EfficientNetB0
 from tensorflow.keras.applications.vgg16 import preprocess_input as preprocess_vgg
 from tensorflow.keras.applications.efficientnet import preprocess_input as preprocess_eff
 from tensorflow.keras.applications.efficientnet import decode_predictions
+from matplotlib.colors import LinearSegmentedColormap
+from tensorflow.keras.layers import Conv2D, ReLU
+from tensorflow.keras.models import Model
+from tensorflow.keras import Input
+from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 import cv2
 
@@ -32,10 +37,10 @@ model = load_model(model_type)
 
 # Image Upload Section
 uploaded_file = st.file_uploader("Upload an Image 🖼️", type=["jpg", "jpeg", "png"])
+class_index = None
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_container_width=True)
-    class_index = None
 
     # Preprocess Image
     img_array = np.array(image.resize((224, 224)))
@@ -52,83 +57,92 @@ if uploaded_file:
         predicted_class = decoded_preds[1]
         class_index = np.argmax(preds)
         st.success(f"Predicted Class: **{predicted_class}**")
+    
+    # Saliency Map Implementation
+    st.subheader("🧠 Saliency Map Visualization")
 
-    # # Visualization Section
-    # st.subheader("🔬 CNN Visualizations")
-
-    # # Select Layer for Visualizations
-    # layer_names = [layer.name for layer in model.layers if 'conv' in layer.name]
-    # selected_layer = st.selectbox("Select Layer for Visualization 🎯", layer_names)
-
-    # # Feature Map Visualization
-    # if st.button("Visualize Feature Maps"):
-    #     feature_model = tf.keras.Model(inputs=model.input, outputs=model.get_layer(selected_layer).output)
-    #     feature_maps = feature_model.predict(img_array)
-
-    #     # Display Feature Maps
-    #     num_filters = feature_maps.shape[-1]
-    #     grid_size = int(np.ceil(np.sqrt(num_filters)))
-
-    #     fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
-    #     axes = axes.ravel()
-    #     for i in range(num_filters):
-    #         if i < len(axes):
-    #             axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
-    #             axes[i].axis('off')
-    #     st.pyplot(fig)
-
-    # Grad-CAM Visualization Section
-    st.subheader("🔥 Grad-CAM Overlay Visualization")
-
-    def compute_grad_cam(img_array, model, layer_name, class_index):
-        last_conv_layer = model.get_layer(layer_name)
-        grad_model = tf.keras.Model(inputs=model.input, outputs=[last_conv_layer.output, model.output])
+    def compute_saliency_map(image_array, model, class_index):
+    # Convert the image to a tensor and watch it for gradients
+        input_tensor = tf.convert_to_tensor(image_array, dtype=tf.float32)
+        input_tensor = tf.Variable(input_tensor)
 
         with tf.GradientTape() as tape:
-            conv_outputs, model_outputs = grad_model(img_array)
-            tape.watch(conv_outputs)
-            class_score = model_outputs[:, class_index]
+            tape.watch(input_tensor)
+            preds = model(input_tensor)
+            loss = preds[0][class_index]
 
-        grads = tape.gradient(class_score, conv_outputs)
-        pooled_grads = np.mean(grads, axis=(0, 1, 2))
+        # Compute gradients
+        gradients = tape.gradient(loss, input_tensor)
+        gradients = tf.reduce_max(tf.abs(gradients), axis=-1)[0]
 
-        conv_outputs = conv_outputs[0].numpy()
-        for i in range(conv_outputs.shape[-1]):
-            conv_outputs[:, :, i] *= pooled_grads[i]
+        # Apply Gaussian smoothing to increase receptive field
+        smoothed_gradients = gaussian_filter(gradients, sigma=5)
 
-        heatmap = np.mean(conv_outputs, axis=-1)
-        heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
-        return heatmap
+        # Normalize gradients with power normalization to boost visibility
+        saliency_map = np.power(smoothed_gradients, 0.8)  # Control the power for better spread
+        saliency_map = (saliency_map - np.min(saliency_map)) / (np.max(saliency_map) - np.min(saliency_map) + 1e-9)
 
-    if st.button("Generate Grad-CAM Overlay"):
-        grad_cam_layer = "top_conv" if model_type == "EfficientNetB0" else "block5_conv3"
-        grad_cam_heatmap = compute_grad_cam(img_array, model, grad_cam_layer, class_index)
+        return saliency_map
 
-        img = np.array(image.resize((224, 224)))
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_heatmap), cv2.COLORMAP_JET)
-        heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
+    # Generate Saliency Map Button
+    if st.button("Generate Saliency Map"):
+        class_index = np.argmax(model.predict(img_array))
+        if class_index is not None:
+            saliency_map = compute_saliency_map(img_array, model, class_index)
 
-        # Blend heatmap and original image
-        superimposed_img = cv2.addWeighted(heatmap, 0.5, img_bgr, 0.5, 0)
-        superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
+            # Bright green and blue colormap
+            custom_cmap = LinearSegmentedColormap.from_list(
+                "BrightBlueGreen", [(0, 0, 1), (0, 1, 0)]
+            )
 
-        st.image(superimposed_img_rgb, caption="Grad-CAM Overlay", use_container_width=True)
+            # Display Saliency Map
+            fig, ax = plt.subplots()
+            ax.imshow(saliency_map, cmap=custom_cmap)
+            ax.axis('off')
+            st.pyplot(fig)
+        else:
+            st.warning("Please predict the image class first.")
 
     # Custom Layer Creation
-    st.sidebar.header("Custom Layer Creation 🛠️")
+    st.sidebar.header("Custom Layer Creation 🛠")
     num_filters = st.sidebar.slider("Number of Filters", min_value=1, max_value=64, value=16)
     kernel_size = st.sidebar.slider("Kernel Size", min_value=1, max_value=11, value=3)
     stride = st.sidebar.slider("Stride", min_value=1, max_value=5, value=1)
     padding = st.sidebar.selectbox("Padding", ["valid", "same"])
 
+    # Create a session state to store weights
+    if 'custom_weights' not in st.session_state:
+        st.session_state.custom_weights = None
+        st.session_state.prev_filters = num_filters
+        st.session_state.prev_kernel = kernel_size
+
     if st.sidebar.button("Apply Custom Layer"):
+        # Check if we need to generate new weights
+        generate_new_weights = (st.session_state.custom_weights is None or 
+                            st.session_state.prev_filters != num_filters or 
+                            st.session_state.prev_kernel != kernel_size)
+        
+        # Create the custom layer
         custom_layer = tf.keras.layers.Conv2D(
             filters=num_filters,
             kernel_size=(kernel_size, kernel_size),
             strides=(stride, stride),
-            padding=padding
+            padding=padding,
+            use_bias=True
         )
+        
+        # Generate input shape for layer initialization
+        dummy_input = tf.keras.layers.Input(shape=(224, 224, 3))
+        _ = custom_layer(dummy_input)
+        
+        if generate_new_weights:
+            # Store the new weights
+            st.session_state.custom_weights = custom_layer.get_weights()
+            st.session_state.prev_filters = num_filters
+            st.session_state.prev_kernel = kernel_size
+        else:
+            # Use stored weights
+            custom_layer.set_weights(st.session_state.custom_weights)
         
         st.subheader("🔥 Custom Layer Visualization")
 
@@ -139,98 +153,59 @@ if uploaded_file:
         # Apply Custom Layer
         feature_maps = custom_layer(img_array_custom).numpy()
 
-        # Display Feature Maps
-        num_filters = feature_maps.shape[-1]
-        grid_size = int(np.ceil(np.sqrt(num_filters)))
-
-        fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
-        axes = axes.ravel()
-        for i in range(num_filters):
-            if i < len(axes):
-                axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
+        # Handle visualization differently based on number of filters
+        if num_filters == 1:
+            # Single filter case
+            fig, ax = plt.subplots(figsize=(8, 8))
+            ax.imshow(feature_maps[0, :, :, 0], cmap='viridis')
+            ax.axis('off')
+        else:
+            # Multiple filters case
+            grid_size = int(np.ceil(np.sqrt(num_filters)))
+            fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
+            axes = axes.ravel()
+            for i in range(num_filters):
+                if i < len(axes):
+                    axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
+                    axes[i].axis('off')
+            # Hide empty subplots
+            for i in range(num_filters, len(axes)):
                 axes[i].axis('off')
-        st.pyplot(fig)
-
-    # Interactive CNN Builder
-    st.sidebar.header("Interactive CNN Builder 🏗️")
-    selected_layers = st.sidebar.multiselect(
-        "Select Layers",
-        ["Conv2D", "MaxPooling2D", "ReLU", "Flatten", "Dense"]
-    )
-
-    if st.sidebar.button("Build CNN"):
-        inputs = tf.keras.Input(shape=(224, 224, 3))
-        x = inputs
-        for layer in selected_layers:
-            if layer == "Conv2D":
-                x = tf.keras.layers.Conv2D(32, (3, 3), padding="same")(x)
-            elif layer == "MaxPooling2D":
-                x = tf.keras.layers.MaxPooling2D((2, 2))(x)
-            elif layer == "ReLU":
-                x = tf.keras.layers.ReLU()(x)
-            elif layer == "Flatten":
-                x = tf.keras.layers.Flatten()(x)
-            elif layer == "Dense":
-                x = tf.keras.layers.Dense(128)(x)
-        model_custom = tf.keras.Model(inputs, x)
-
-        # Preprocess Image
-        img_array_custom = np.array(image.resize((224, 224))) / 255.0
-        img_array_custom = np.expand_dims(img_array_custom, axis=0)
+                axes[i].set_visible(False)
         
-        st.subheader("🔥 Custom CNN Visualization")
-
-        # Visualize Feature Maps at Each Layer
-        for layer in model_custom.layers:
-            if "conv" in layer.name or "pool" in layer.name:
-                feature_model = tf.keras.Model(inputs=model_custom.input, outputs=layer.output)
-                feature_maps = feature_model.predict(img_array_custom)
-
-                st.subheader(f"Layer: {layer.name}")
-                num_filters = feature_maps.shape[-1]
-                grid_size = int(np.ceil(np.sqrt(num_filters)))
-
-                fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 10))
-                axes = axes.ravel()
-                for i in range(num_filters):
-                    if i < len(axes):
-                        axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
-                        axes[i].axis('off')
-                st.pyplot(fig)
+        st.pyplot(fig)
 
     # Advanced Visualization
     st.subheader("Advanced Visualization 🔬")
 
-    # Grad-CAM Adjustments
+    # Saliency Map Adjustments
     heatmap_intensity = st.slider("Heatmap Intensity", min_value=0.1, max_value=1.0, value=0.5)
     overlay_opacity = st.slider("Overlay Opacity", min_value=0.1, max_value=1.0, value=0.5)
 
-    if st.button("Generate Enhanced Grad-CAM"):
-        grad_cam_layer = "top_conv" if model_type == "EfficientNetB0" else "block5_conv3"
-        grad_cam_heatmap = compute_grad_cam(img_array, model, grad_cam_layer, class_index)
+    if st.button("Generate Enhanced Saliency Map"):
+        # Get class index from model prediction
+        class_index = np.argmax(model.predict(img_array))
+        
+        if class_index is not None:
+            # Generate the Saliency Map
+            saliency_map = compute_saliency_map(img_array, model, class_index)
+            
+            # Resize the image to match the saliency map dimensions
+            img_resized = np.array(image.resize((224, 224)))
+            img_bgr = cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR)
+            
+            # Apply the Saliency Map as a heatmap
+            heatmap = cv2.applyColorMap(np.uint8(255 * saliency_map), cv2.COLORMAP_JET)
+            heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
 
-        img = np.array(image.resize((224, 224)))
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_heatmap), cv2.COLORMAP_JET)
-        heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
+            # Blend heatmap and original image with adjustable opacity
+            superimposed_img = cv2.addWeighted(heatmap, heatmap_intensity, img_bgr, overlay_opacity, 0)
+            superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
 
-        # Blend heatmap and original image with adjustable opacity
-        superimposed_img = cv2.addWeighted(heatmap, heatmap_intensity, img_bgr, overlay_opacity, 0)
-        superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
-
-        st.image(superimposed_img_rgb, caption="Enhanced Grad-CAM Overlay", use_container_width=True)
-
-    # Class Activation Mapping (CAM)
-    if st.button("Generate CAM"):
-        cam_layer = "top_conv" if model_type == "EfficientNetB0" else "block5_conv3"
-        cam_model = tf.keras.Model(inputs=model.input, outputs=[model.get_layer(cam_layer).output, model.output])
-        conv_outputs, preds = cam_model(img_array)
-        class_weights = np.mean(conv_outputs[0], axis=(0, 1))
-        cam = np.dot(conv_outputs[0], class_weights)
-
-        plt.imshow(cam, cmap='hot')
-        plt.axis('off')
-        st.pyplot()
+            # Display the result
+            st.image(superimposed_img_rgb, caption="Enhanced Saliency Map Overlay", use_container_width=True)
+        else:
+            st.warning("Please predict the image class first.")
         
     # Forward Propagation Visualization
     st.subheader("🔍 Forward Propagation Visualization")
@@ -279,6 +254,44 @@ if uploaded_file:
             axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
             axes[j].axis('off')
     st.pyplot(fig)
+    
+    # # Grad-CAM Visualization Section
+    # st.subheader("🔥 Grad-CAM Overlay Visualization")
+
+    # def compute_grad_cam(img_array, model, layer_name, class_index):
+    #     last_conv_layer = model.get_layer(layer_name)
+    #     grad_model = tf.keras.Model(inputs=model.input, outputs=[last_conv_layer.output, model.output])
+
+    #     with tf.GradientTape() as tape:
+    #         conv_outputs, model_outputs = grad_model(img_array)
+    #         tape.watch(conv_outputs)
+    #         class_score = model_outputs[:, class_index]
+
+    #     grads = tape.gradient(class_score, conv_outputs)
+    #     pooled_grads = np.mean(grads, axis=(0, 1, 2))
+
+    #     conv_outputs = conv_outputs[0].numpy()
+    #     for i in range(conv_outputs.shape[-1]):
+    #         conv_outputs[:, :, i] *= pooled_grads[i]
+
+    #     heatmap = np.mean(conv_outputs, axis=-1)
+    #     heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
+    #     return heatmap
+
+    # if st.button("Generate Grad-CAM Overlay"):
+    #     grad_cam_layer = "top_conv" if model_type == "EfficientNetB0" else "block5_conv3"
+    #     grad_cam_heatmap = compute_grad_cam(img_array, model, grad_cam_layer, class_index)
+
+    #     img = np.array(image.resize((224, 224)))
+    #     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    #     heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_heatmap), cv2.COLORMAP_JET)
+    #     heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
+
+    #     # Blend heatmap and original image
+    #     superimposed_img = cv2.addWeighted(heatmap, 0.5, img_bgr, 0.5, 0)
+    #     superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
+
+    #     st.image(superimposed_img_rgb, caption="Grad-CAM Overlay", use_container_width=True)
 
     st.markdown("""
     ### How Filters and Channels Work:
