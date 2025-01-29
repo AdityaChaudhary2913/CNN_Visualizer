@@ -99,6 +99,252 @@ if uploaded_file:
             st.pyplot(fig)
         else:
             st.warning("Please predict the image class first.")
+    
+    # Advanced Visualization
+    st.subheader("Advanced Visualization 🔬")
+
+    # Saliency Map Adjustments
+    heatmap_intensity = st.slider("Heatmap Intensity", min_value=0.1, max_value=1.0, value=0.5)
+    overlay_opacity = st.slider("Overlay Opacity", min_value=0.1, max_value=1.0, value=0.5)
+
+    if st.button("Generate Enhanced Saliency Map"):
+        # Get class index from model prediction
+        class_index = np.argmax(model.predict(img_array))
+        
+        if class_index is not None:
+            # Generate the Saliency Map
+            saliency_map = compute_saliency_map(img_array, model, class_index)
+            
+            # Resize the image to match the saliency map dimensions
+            img_resized = np.array(image.resize((224, 224)))
+            img_bgr = cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR)
+            
+            # Apply the Saliency Map as a heatmap
+            heatmap = cv2.applyColorMap(np.uint8(255 * saliency_map), cv2.COLORMAP_JET)
+            heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
+
+            # Blend heatmap and original image with adjustable opacity
+            superimposed_img = cv2.addWeighted(heatmap, heatmap_intensity, img_bgr, overlay_opacity, 0)
+            superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
+
+            # Display the result
+            st.image(superimposed_img_rgb, caption="Enhanced Saliency Map Overlay", use_container_width=True)
+        else:
+            st.warning("Please predict the image class first.")
+            
+    # Custom Filter Creation
+    st.subheader("🎨 Custom Filter Creation")
+
+    # Filter size selection
+    filter_size = st.slider("Filter Size", min_value=2, max_value=5, value=3)
+
+    def apply_example_filter(weights):
+        """Helper function to set filter weights in the session state"""
+        flat_weights = weights.flatten()
+        for i in range(len(flat_weights)):
+            row = i // weights.shape[1]
+            col = i % weights.shape[1]
+            st.session_state[f"weight_{row}_{col}"] = flat_weights[i]
+
+    # Example Filters Dictionary
+    example_filters = {
+        2: {
+            "Simple Edge Detector": np.array([
+                [1, -1],
+                [1, -1]
+            ]),
+            "Diagonal Edge": np.array([
+                [1, -1],
+                [-1, 1]
+            ]),
+            "Simple Gradient": np.array([
+                [1, 2],
+                [0, -1]
+            ])
+        },
+        3: {
+            "Sobel Horizontal": np.array([
+                [1, 2, 1],
+                [0, 0, 0],
+                [-1, -2, -1]
+            ]),
+            "Sobel Vertical": np.array([
+                [-1, 0, 1],
+                [-2, 0, 2],
+                [-1, 0, 1]
+            ]),
+            "Laplacian": np.array([
+                [0, 1, 0],
+                [1, -4, 1],
+                [0, 1, 0]
+            ]),
+            "Gaussian Blur": np.array([
+                [1/16, 2/16, 1/16],
+                [2/16, 4/16, 2/16],
+                [1/16, 2/16, 1/16]
+            ]),
+            "Sharpen": np.array([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0]
+            ]),
+            "Ridge Detection": np.array([
+                [-1, -1, -1],
+                [2, 2, 2],
+                [-1, -1, -1]
+            ]),
+            "Emboss": np.array([
+                [-2, -1, 0],
+                [-1, 1, 1],
+                [0, 1, 2]
+            ])
+        },
+        4: {
+            "Extended Edge": np.array([
+                [1, 1, -1, -1],
+                [1, 1, -1, -1],
+                [1, 1, -1, -1],
+                [1, 1, -1, -1]
+            ]),
+            "Center Focus": np.array([
+                [-1, -1, -1, -1],
+                [-1, 2, 2, -1],
+                [-1, 2, 2, -1],
+                [-1, -1, -1, -1]
+            ]),
+            "Diamond Pattern": np.array([
+                [0, 1, 1, 0],
+                [1, 2, 2, 1],
+                [1, 2, 2, 1],
+                [0, 1, 1, 0]
+            ])
+        },
+        5: {
+            "Extended Gaussian": np.array([
+                [1, 4, 6, 4, 1],
+                [4, 16, 24, 16, 4],
+                [6, 24, 36, 24, 6],
+                [4, 16, 24, 16, 4],
+                [1, 4, 6, 4, 1]
+            ]) / 256,
+            "Extended Laplacian": np.array([
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1],
+                [-1, -1, 24, -1, -1],
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1]
+            ]),
+            "Concentric Pattern": np.array([
+                [-1, -1, -1, -1, -1],
+                [-1, 2, 2, 2, -1],
+                [-1, 2, 3, 2, -1],
+                [-1, 2, 2, 2, -1],
+                [-1, -1, -1, -1, -1]
+            ])
+        }
+    }
+
+    # Display example filters for current size
+    st.subheader(f"📚 Example {filter_size}x{filter_size} Filters")
+    cols = st.columns(2)
+    for idx, (name, weights) in enumerate(example_filters[filter_size].items()):
+        with cols[idx % 2]:
+            if st.button(f"Apply {name} Filter"):
+                apply_example_filter(weights)
+            st.code(str(weights))
+
+    # Create a grid layout for filter weights
+    st.write("Set Filter Weights:")
+    cols = st.columns(filter_size)
+    filter_weights = np.zeros((filter_size, filter_size))
+
+    # Create number inputs in a grid layout
+    for i in range(filter_size):
+        with cols[i]:
+            for j in range(filter_size):
+                filter_weights[j][i] = st.number_input(
+                    f"Weight [{j},{i}]",
+                    min_value=-100.0,
+                    max_value=100.0,
+                    value=0.0,
+                    step=0.1,
+                    key=f"weight_{j}_{i}"
+                )
+
+    # Add ReLU toggle
+    apply_relu = st.checkbox("Apply ReLU Activation", value=True)
+
+    if st.button("Apply Custom Filter"):
+        if uploaded_file:
+            # Convert the image to grayscale for single-channel processing
+            gray_image = Image.open(uploaded_file).convert('L')
+            gray_image = gray_image.resize((224, 224))
+            input_array = np.array(gray_image) / 255.0
+            
+            # Reshape filter weights for convolution
+            filter_weights_reshaped = filter_weights.reshape(filter_size, filter_size, 1, 1)
+            
+            # Create and apply the custom convolution layer
+            custom_filter = tf.keras.layers.Conv2D(
+                filters=1,
+                kernel_size=(filter_size, filter_size),
+                padding='same',
+                use_bias=False
+            )
+            
+            # Set the custom weights
+            custom_filter.build((None, 224, 224, 1))
+            custom_filter.set_weights([filter_weights_reshaped])
+            
+            # Apply convolution
+            input_tensor = tf.convert_to_tensor(input_array[np.newaxis, :, :, np.newaxis])
+            output = custom_filter(input_tensor)
+            
+            # Apply ReLU if selected
+            if apply_relu:
+                output = tf.nn.relu(output)
+            
+            # Convert to numpy for visualization
+            output_array = output.numpy()[0, :, :, 0]
+            
+            # Create visualization
+            fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+            
+            # Original image
+            ax1.imshow(input_array, cmap='gray')
+            ax1.set_title('Original Image')
+            ax1.axis('off')
+            
+            # Filter visualization
+            filter_img = ax2.imshow(filter_weights, cmap='viridis')
+            ax2.set_title('Filter Weights')
+            ax2.axis('off')
+            plt.colorbar(filter_img, ax=ax2, fraction=0.046, pad=0.04)
+            
+            # Filtered image
+            filtered_img = ax3.imshow(output_array, cmap='viridis')
+            ax3.set_title('Filtered Image' + (' (with ReLU)' if apply_relu else ''))
+            ax3.axis('off')
+            plt.colorbar(filtered_img, ax=ax3, fraction=0.046, pad=0.04)
+            
+            # Display the plot
+            st.pyplot(fig)
+            
+            # Additional explanation
+            st.markdown("""
+            ### Understanding the Visualization:
+            1. **Left**: Original grayscale image
+            2. **Middle**: Your custom filter weights (blue = negative, yellow = positive)
+            3. **Right**: Result of applying your filter""")
+            
+            if apply_relu:
+                st.markdown("""
+                🔍 **ReLU Effect**: Notice how ReLU has removed all negative values, 
+                keeping only the positive activations. This non-linearity helps neural 
+                networks learn more complex patterns.""")
+                
+        else:
+            st.warning("Please upload an image first!")
 
     # Custom Layer Creation
     st.sidebar.header("Custom Layer Creation 🛠")
@@ -171,38 +417,6 @@ if uploaded_file:
                 axes[i].set_visible(False)
         
         st.pyplot(fig)
-
-    # Advanced Visualization
-    st.subheader("Advanced Visualization 🔬")
-
-    # Saliency Map Adjustments
-    heatmap_intensity = st.slider("Heatmap Intensity", min_value=0.1, max_value=1.0, value=0.5)
-    overlay_opacity = st.slider("Overlay Opacity", min_value=0.1, max_value=1.0, value=0.5)
-
-    if st.button("Generate Enhanced Saliency Map"):
-        # Get class index from model prediction
-        class_index = np.argmax(model.predict(img_array))
-        
-        if class_index is not None:
-            # Generate the Saliency Map
-            saliency_map = compute_saliency_map(img_array, model, class_index)
-            
-            # Resize the image to match the saliency map dimensions
-            img_resized = np.array(image.resize((224, 224)))
-            img_bgr = cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR)
-            
-            # Apply the Saliency Map as a heatmap
-            heatmap = cv2.applyColorMap(np.uint8(255 * saliency_map), cv2.COLORMAP_JET)
-            heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
-
-            # Blend heatmap and original image with adjustable opacity
-            superimposed_img = cv2.addWeighted(heatmap, heatmap_intensity, img_bgr, overlay_opacity, 0)
-            superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
-
-            # Display the result
-            st.image(superimposed_img_rgb, caption="Enhanced Saliency Map Overlay", use_container_width=True)
-        else:
-            st.warning("Please predict the image class first.")
         
     # Forward Propagation Visualization
     st.subheader("🔍 Forward Propagation Visualization")
@@ -251,10 +465,3 @@ if uploaded_file:
             axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
             axes[j].axis('off')
     st.pyplot(fig)
-
-    st.markdown("""
-    ### How Filters and Channels Work:
-    - **Input Channels:** The number of channels in the input image (e.g., 3 for RGB).
-    - **Filters:** Each filter applies a convolution operation to the input.
-    - **Output Feature Maps:** The number of output feature maps equals the number of filters.
-    """)
