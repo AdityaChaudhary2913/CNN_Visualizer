@@ -7,9 +7,6 @@ from tensorflow.keras.applications.vgg16 import preprocess_input as preprocess_v
 from tensorflow.keras.applications.efficientnet import preprocess_input as preprocess_eff
 from tensorflow.keras.applications.efficientnet import decode_predictions
 from matplotlib.colors import LinearSegmentedColormap
-from tensorflow.keras.layers import Conv2D, ReLU
-from tensorflow.keras.models import Model
-from tensorflow.keras import Input
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 import cv2
@@ -254,44 +251,6 @@ if uploaded_file:
             axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
             axes[j].axis('off')
     st.pyplot(fig)
-    
-    # # Grad-CAM Visualization Section
-    # st.subheader("🔥 Grad-CAM Overlay Visualization")
-
-    # def compute_grad_cam(img_array, model, layer_name, class_index):
-    #     last_conv_layer = model.get_layer(layer_name)
-    #     grad_model = tf.keras.Model(inputs=model.input, outputs=[last_conv_layer.output, model.output])
-
-    #     with tf.GradientTape() as tape:
-    #         conv_outputs, model_outputs = grad_model(img_array)
-    #         tape.watch(conv_outputs)
-    #         class_score = model_outputs[:, class_index]
-
-    #     grads = tape.gradient(class_score, conv_outputs)
-    #     pooled_grads = np.mean(grads, axis=(0, 1, 2))
-
-    #     conv_outputs = conv_outputs[0].numpy()
-    #     for i in range(conv_outputs.shape[-1]):
-    #         conv_outputs[:, :, i] *= pooled_grads[i]
-
-    #     heatmap = np.mean(conv_outputs, axis=-1)
-    #     heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
-    #     return heatmap
-
-    # if st.button("Generate Grad-CAM Overlay"):
-    #     grad_cam_layer = "top_conv" if model_type == "EfficientNetB0" else "block5_conv3"
-    #     grad_cam_heatmap = compute_grad_cam(img_array, model, grad_cam_layer, class_index)
-
-    #     img = np.array(image.resize((224, 224)))
-    #     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    #     heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_heatmap), cv2.COLORMAP_JET)
-    #     heatmap = cv2.resize(heatmap, (img_bgr.shape[1], img_bgr.shape[0]))
-
-    #     # Blend heatmap and original image
-    #     superimposed_img = cv2.addWeighted(heatmap, 0.5, img_bgr, 0.5, 0)
-    #     superimposed_img_rgb = cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB)
-
-    #     st.image(superimposed_img_rgb, caption="Grad-CAM Overlay", use_container_width=True)
 
     st.markdown("""
     ### How Filters and Channels Work:
