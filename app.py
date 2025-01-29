@@ -20,7 +20,7 @@ st.title("CNN Visualization App 📊")
 
 # Sidebar for Model Selection
 st.sidebar.header("Configuration Settings")
-model_type = st.sidebar.selectbox("Choose Model", ["VGG16", "EfficientNetB0"])
+model_type = st.sidebar.selectbox("Choose Model", ["VGG16"])
 
 # Load the pre-trained model
 @st.cache_resource
