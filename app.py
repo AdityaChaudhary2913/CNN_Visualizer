@@ -50,32 +50,62 @@ if uploaded_file:
         class_index = np.argmax(preds)
         st.success(f"Predicted Class: **{predicted_class}**")
 
-    # Visualization Section
-    st.subheader("🔬 CNN Visualizations")
+    # # Visualization Section
+    # st.subheader("🔬 CNN Visualizations")
 
-    # Select Layer for Visualizations
-    layer_names = [layer.name for layer in model.layers if 'conv' in layer.name]
-    selected_layer = st.selectbox("Select Layer for Visualization 🎯", layer_names)
+    # # Select Layer for Visualizations
+    # layer_names = [layer.name for layer in model.layers if 'conv' in layer.name]
+    # selected_layer = st.selectbox("Select Layer for Visualization 🎯", layer_names)
 
-    # Feature Map Visualization
-    if st.button("Visualize Feature Maps"):
-        feature_model = tf.keras.Model(inputs=model.input, outputs=model.get_layer(selected_layer).output)
-        feature_maps = feature_model.predict(img_array)
+    # # Feature Map Visualization
+    # if st.button("Visualize Feature Maps"):
+    #     feature_model = tf.keras.Model(inputs=model.input, outputs=model.get_layer(selected_layer).output)
+    #     feature_maps = feature_model.predict(img_array)
 
-        # Display Feature Maps
-        num_filters = feature_maps.shape[-1]
-        grid_size = int(np.ceil(np.sqrt(num_filters)))
+    #     # Display Feature Maps
+    #     num_filters = feature_maps.shape[-1]
+    #     grid_size = int(np.ceil(np.sqrt(num_filters)))
 
-        fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
-        axes = axes.ravel()
-        for i in range(num_filters):
-            if i < len(axes):
-                axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
-                axes[i].axis('off')
-        st.pyplot(fig)
+    #     fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
+    #     axes = axes.ravel()
+    #     for i in range(num_filters):
+    #         if i < len(axes):
+    #             axes[i].imshow(feature_maps[0, :, :, i], cmap='viridis')
+    #             axes[i].axis('off')
+    #     st.pyplot(fig)
 
     # Grad-CAM Visualization Section
     st.subheader("🔥 Grad-CAM Overlay Visualization")
+    
+    # def compute_grad_cam(img_array, model, layer_name, class_index):
+    #     # Get last convolutional layer
+    #     last_conv_layer = model.get_layer(layer_name)
+    #     grad_model = tf.keras.Model(inputs=model.input, outputs=[last_conv_layer.output, model.output])
+
+    #     with tf.GradientTape() as tape:
+    #         conv_outputs, model_outputs = grad_model(img_array)
+    #         class_score = model_outputs[:, class_index]  # Get the score of the predicted class
+
+    #     # Compute gradients
+    #     grads = tape.gradient(class_score, conv_outputs)
+
+    #     # Average the gradients across height and width, keep channel dimension
+    #     pooled_grads = np.mean(grads, axis=(0, 1))
+
+    #     # Reshape pooled_grads to match the last dimension of conv_outputs
+    #     pooled_grads = pooled_grads.reshape((1, 1, -1))  # Shape becomes (1,1,512)
+
+    #     # Multiply feature maps by corresponding gradients
+    #     conv_outputs = conv_outputs[0].numpy()
+    #     for i in range(conv_outputs.shape[-1]):
+    #         conv_outputs[:, :, i] *= pooled_grads[i]  # Multiply each channel by corresponding weight
+
+    #     # Generate heatmap
+    #     heatmap = np.mean(conv_outputs, axis=-1)  # Reduce to single channel
+    #     heatmap = np.maximum(heatmap, 0)  # Apply ReLU to retain positive activations
+    #     heatmap /= np.max(heatmap)  # Normalize between 0 and 1
+
+    #     return heatmap
 
     def compute_grad_cam(img_array, model, layer_name, class_index):
         last_conv_layer = model.get_layer(layer_name)
@@ -228,6 +258,73 @@ if uploaded_file:
         plt.imshow(cam, cmap='hot')
         plt.axis('off')
         st.pyplot()
+        
+    # Forward Propagation Visualization
+    st.subheader("🔍 Forward Propagation Visualization")
+
+    # Create a model that outputs the activations of each layer
+    layer_outputs = [layer.output for layer in model.layers]
+    activation_model = tf.keras.Model(inputs=model.input, outputs=layer_outputs)
+
+    # Get activations for the input image
+    activations = activation_model.predict(img_array)
+
+    # Extract layer names for the selectbox
+    layer_names = [layer.name for layer in model.layers if "conv" in layer.name or "pool" in layer.name]
+
+    # Add a selectbox for layer selection
+    selected_layer = st.selectbox("Select Layer to Visualize 🎯", layer_names)
+
+    # Find the index of the selected layer
+    layer_index = [layer.name for layer in model.layers].index(selected_layer)
+    
+    from io import BytesIO
+    buf = BytesIO()
+    plt.savefig(buf, format="png")
+    st.download_button("Download Feature Maps", buf.getvalue(), file_name="feature_maps.png", mime="image/png")
+
+    # Visualize activations for the selected layer
+    st.subheader(f"Layer: {selected_layer}")
+    layer_activation = activations[layer_index]
+
+    # Display feature maps for the selected layer
+    num_filters = layer_activation.shape[-1]
+    grid_size = int(np.ceil(np.sqrt(num_filters)))
+    
+    selected_filter = st.slider("Select Filter", 0, num_filters - 1, 0)
+    plt.imshow(layer_activation[0, :, :, selected_filter], cmap='viridis')
+    plt.title(f"Filter {selected_filter}")
+    plt.axis('off')
+    st.pyplot()
+
+    fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 10))
+    axes = axes.ravel()
+    for j in range(num_filters):
+        if j < len(axes):
+            axes[j].imshow(layer_activation[0, :, :, j], cmap='viridis')
+            axes[j].axis('off')
+    st.pyplot(fig)
+    
+    # # Backward Propagation Visualization
+    # st.subheader("🔍 Backward Propagation Visualization")
+
+    # if st.button("Visualize Backward Propagation"):
+    #     selected_layer = st.selectbox("Select Layer for Gradient Visualization 🎯", layer_names)
+    #     grad_model = tf.keras.Model(inputs=model.input, outputs=model.get_layer(selected_layer).output)
+
+    #     with tf.GradientTape() as tape:
+    #         tape.watch(img_array)
+    #         conv_outputs = grad_model(img_array)
+    #         loss = tf.reduce_mean(conv_outputs)
+
+    #     grads = tape.gradient(loss, img_array)
+    #     grads = grads[0].numpy()
+
+    #     st.subheader(f"Gradients for Layer: {selected_layer}")
+    #     plt.imshow(np.mean(grads, axis=-1), cmap='hot')
+    #     plt.colorbar()
+    #     plt.axis('off')
+    #     st.pyplot()
 
     st.markdown("""
     ### How Filters and Channels Work:
