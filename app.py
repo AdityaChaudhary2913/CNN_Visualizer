@@ -19,7 +19,7 @@ st.set_page_config(page_title="CNN Visualization App", layout="wide")
 st.title("CNN Visualization App 📊")
 
 # Sidebar for Model Selection
-st.sidebar.header("Using Pretrained Model VGG16")
+st.sidebar.header("Using Pretrained VGG16")
 model_type = "VGG16"
 
 # Load the pre-trained model
@@ -105,7 +105,7 @@ if uploaded_file:
 
     # Saliency Map Adjustments
     heatmap_intensity = st.slider("Heatmap Intensity", min_value=0.1, max_value=1.0, value=0.5)
-    overlay_opacity = st.slider("Overlay Opacity", min_value=0.1, max_value=1.0, value=0.5)
+    overlay_opacity = st.slider("Background Opacity", min_value=0.1, max_value=1.0, value=0.5)
 
     if st.button("Generate Enhanced Saliency Map"):
         # Get class index from model prediction
